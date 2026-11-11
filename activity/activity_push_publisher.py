@@ -5,13 +5,20 @@ from datetime import UTC, datetime
 from pynput.keyboard import Listener as KeyboardListener
 from pynput.mouse import Listener as MouseListener
 
+from abstract import Pushable, Subscribable
 from activity.activity import Activity, Inactivity, KeyboardActivity, MouseActivity
 from activity.activity_base import AsyncActivityBase
-from util import Pushable, Subscribable
+
+DEFAULT_QUEUE_SIZE = 10
+DEFAULT_INACTIVITY_TIMEOUT = 10
 
 
 class ActivityPushPublisher(AsyncActivityBase, Subscribable):
-    def __init__(self, queue_size: int = 10, inactivity_timeout: int = 10):
+    def __init__(
+        self,
+        queue_size: int = DEFAULT_QUEUE_SIZE,
+        inactivity_timeout: int = DEFAULT_INACTIVITY_TIMEOUT,
+    ):
         super().__init__(queue_size, inactivity_timeout)
         self.subscribers: dict[type[Activity], list[Pushable]] = {}
 
@@ -26,7 +33,7 @@ class ActivityPushPublisher(AsyncActivityBase, Subscribable):
                 activity_subscribers.append(subscriber)
 
     async def handle_publish(self, activity: Activity):
-        activity_subscribers = self.subscribers.get(Activity)
+        activity_subscribers = self.subscribers.get(type(activity))
         if activity_subscribers:
             for subscriber in activity_subscribers:
                 subscriber.push(activity)
@@ -41,11 +48,15 @@ class ActivityPushPublisher(AsyncActivityBase, Subscribable):
                 await self.handle_publish(activity)
 
             except TimeoutError:
-                await self.handle_publish(Inactivity(datetime.now(UTC)))
+                await self.handle_publish(Inactivity())
 
 
 class KeyboardMouseActivityPushPublisher(ActivityPushPublisher):
-    def __init__(self, queue_size: int = 10, inactivity_timeout: int = 10):
+    def __init__(
+        self,
+        queue_size: int = DEFAULT_QUEUE_SIZE,
+        inactivity_timeout: int = DEFAULT_INACTIVITY_TIMEOUT,
+    ):
         super().__init__(queue_size, inactivity_timeout)
         self.event_loop = asyncio.get_running_loop()
 
@@ -63,25 +74,72 @@ class KeyboardMouseActivityPushPublisher(ActivityPushPublisher):
             self.dropped += 1
 
     def _on_key_press(self, key):
-        self.event_loop.call_soon_threadsafe(self._handle_on_key_press, key)
+        timestamp = datetime.now(UTC)
+        monotonic_timestamp = time.monotonic()
+        self.event_loop.call_soon_threadsafe(
+            self._handle_on_key_press,
+            key,
+            timestamp,
+            monotonic_timestamp,
+        )
 
-    def _handle_on_key_press(self, key):
-        self._put_activity(KeyboardActivity(datetime.now(UTC), key))
+    def _handle_on_key_press(
+        self,
+        key,
+        timestamp: datetime | None = None,
+        monotonic_timestamp: float | None = None,
+    ):
+        if timestamp is None:
+            timestamp = datetime.now(UTC)
+        if monotonic_timestamp is None:
+            monotonic_timestamp = time.monotonic()
+        self._put_activity(
+            KeyboardActivity(
+                key,
+                timestamp=timestamp,
+                monotonic_timestamp=monotonic_timestamp,
+            )
+        )
 
     def _on_click(self, x, y, button, pressed):
         if pressed:
+            timestamp = datetime.now(UTC)
+            monotonic_timestamp = time.monotonic()
             self.event_loop.call_soon_threadsafe(
                 self._handle_on_click,
                 x,
                 y,
                 button,
                 pressed,
+                timestamp,
+                monotonic_timestamp,
             )
 
-    def _handle_on_click(self, x, y, button, pressed):
+    def _handle_on_click(
+        self,
+        x,
+        y,
+        button,
+        pressed,
+        timestamp: datetime | None = None,
+        monotonic_timestamp: float | None = None,
+    ):
         if pressed:
-            self.last_activity = time.monotonic()
-            self._put_activity(MouseActivity(datetime.now(UTC), x, y, button, pressed))
+            if timestamp is None:
+                timestamp = datetime.now(UTC)
+            if monotonic_timestamp is None:
+                monotonic_timestamp = time.monotonic()
+            self.last_activity = monotonic_timestamp
+            self._put_activity(
+                MouseActivity(
+                    x,
+                    y,
+                    button,
+                    pressed,
+                    timestamp=timestamp,
+                    monotonic_timestamp=monotonic_timestamp,
+                )
+            )
 
     async def handle_publish(self, activity: Activity):
         await super().handle_publish(activity)

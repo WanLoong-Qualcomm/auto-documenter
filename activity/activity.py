@@ -1,6 +1,7 @@
+import time
 from abc import ABC
-from dataclasses import dataclass
-from datetime import datetime
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
 
 from pynput.keyboard import Key, KeyCode
 from pynput.mouse import Button
@@ -8,7 +9,10 @@ from pynput.mouse import Button
 
 @dataclass
 class Activity(ABC):
-    timestamp: datetime
+    timestamp: datetime = field(
+        default_factory=lambda: datetime.now(UTC), kw_only=True
+    )
+    monotonic_timestamp: float = field(default_factory=time.monotonic, kw_only=True)
 
 
 @dataclass

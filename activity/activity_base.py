@@ -1,7 +1,7 @@
 import asyncio
 from abc import abstractmethod
 
-from util import AsyncCleanupable
+from abstract import AsyncCleanupable
 
 
 class AsyncActivityBase(AsyncCleanupable):

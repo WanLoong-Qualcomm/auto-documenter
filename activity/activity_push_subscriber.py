@@ -1,9 +1,9 @@
 import asyncio
 from abc import abstractmethod
 
+from abstract import Pushable
 from activity.activity import Activity
 from activity.activity_base import AsyncActivityBase
-from util import Pushable
 
 
 class ActivityPushSubscriber(AsyncActivityBase, Pushable):
